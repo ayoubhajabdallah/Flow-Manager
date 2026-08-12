@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "FlowOps"
+description = "A production-style AI-assisted internal request and workflow management platform for submitting, classifying, prioritizing, and resolving company requests."
+version = "1.0.0"
+id = "artifacts/flowops"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 26065
+
+[services.development]
+run = "pnpm --filter @workspace/flowops run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/flowops", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/flowops/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "26065"
+BASE_PATH = "/"

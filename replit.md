@@ -1,6 +1,6 @@
-# [Project name]
+# FlowOps
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+FlowOps turns plain-language internal support requests into searchable, prioritized workflow records for an operations team.
 
 ## Run & Operate
 
@@ -22,15 +22,22 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/flowops` — responsive React dashboard and request workflow UI.
+- `artifacts/api-server` — live preview API service.
+- `backend/flowops_api` — standalone FastAPI + SQLAlchemy reference backend.
+- `lib/api-spec/openapi.yaml` — source-of-truth REST contract.
+- `lib/db/src/schema/requests.ts` — workspace PostgreSQL schema.
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- The classifier has a deterministic local fallback so the MVP remains runnable without an LLM key.
+- The OpenAPI contract is generated into the React client and Zod validators to keep the dashboard and API aligned.
+- The preview uses the workspace API service, while the standalone Python backend documents the requested FastAPI architecture and Docker path.
+- Sample data is seeded once on first read to make the dashboard useful immediately.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Employees can submit requests, review the classified result, search and filter the request queue, open a detailed request view, update status, and see dashboard-level request health.
 
 ## User preferences
 
@@ -38,7 +45,8 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Run `pnpm --filter @workspace/api-spec run codegen` after changing the OpenAPI spec.
+- The live API is routed under `/api`; the frontend uses the generated client rather than hard-coded service ports.
 
 ## Pointers
 

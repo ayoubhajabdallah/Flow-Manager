@@ -3,13 +3,17 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: FlowOps request workflow API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: requests
+    description: Internal request workflow operations
+  - name: dashboard
+    description: Dashboard summary operations
 paths:
   /healthz:
     get:
@@ -24,6 +28,118 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /requests:
+    get:
+      operationId: listRequests
+      tags: [requests]
+      summary: List internal requests
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/RequestStatus"
+        - name: category
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/RequestCategory"
+        - name: priority
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/RequestPriority"
+      responses:
+        "200":
+          description: Matching requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Request"
+    post:
+      operationId: createRequest
+      tags: [requests]
+      summary: Create and classify an internal request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestInput"
+      responses:
+        "201":
+          description: Created request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Request"
+        "400":
+          description: Invalid request
+  /requests/{id}:
+    get:
+      operationId: getRequest
+      tags: [requests]
+      summary: Get request details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Request details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Request"
+        "404":
+          description: Request not found
+  /requests/{id}/status:
+    patch:
+      operationId: updateRequestStatus
+      tags: [requests]
+      summary: Update request status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestStatusUpdate"
+      responses:
+        "200":
+          description: Updated request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Request"
+        "404":
+          description: Request not found
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary
+      responses:
+        "200":
+          description: Summary metrics and category breakdown
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +149,105 @@ components:
           type: string
       required:
         - status
+    RequestCategory:
+      type: string
+      enum: [ACCESS, HARDWARE, SOFTWARE, NETWORK, SECURITY, OTHER]
+    RequestPriority:
+      type: string
+      enum: [LOW, MEDIUM, HIGH, CRITICAL]
+    RequestStatus:
+      type: string
+      enum: [NEW, CLASSIFIED, IN_PROGRESS, RESOLVED, CLOSED]
+    Request:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - requester
+        - category
+        - priority
+        - status
+        - system
+        - summary
+        - createdAt
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        requester:
+          type: string
+        category:
+          $ref: "#/components/schemas/RequestCategory"
+        priority:
+          $ref: "#/components/schemas/RequestPriority"
+        status:
+          $ref: "#/components/schemas/RequestStatus"
+        system:
+          type: string
+        summary:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    RequestInput:
+      type: object
+      required:
+        - title
+        - description
+        - requester
+      properties:
+        title:
+          type: string
+          minLength: 2
+        description:
+          type: string
+          minLength: 5
+        requester:
+          type: string
+          minLength: 2
+    RequestStatusUpdate:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          $ref: "#/components/schemas/RequestStatus"
+    CategoryCount:
+      type: object
+      required:
+        - category
+        - count
+      properties:
+        category:
+          $ref: "#/components/schemas/RequestCategory"
+        count:
+          type: integer
+    DashboardSummary:
+      type: object
+      required:
+        - total
+        - open
+        - urgent
+        - resolvedThisWeek
+        - averageFirstResponseHours
+        - categories
+      properties:
+        total:
+          type: integer
+        open:
+          type: integer
+        urgent:
+          type: integer
+        resolvedThisWeek:
+          type: integer
+        averageFirstResponseHours:
+          type: number
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoryCount"
 
