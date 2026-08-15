@@ -9,6 +9,12 @@ services:
       - "5432:5432"
     volumes:
       - flowops-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowops -d flowops"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   api:
     build:
@@ -16,8 +22,14 @@ services:
       dockerfile: backend/Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg://flowops:flowops@postgres:5432/flowops
+      CLASSIFICATION_PROVIDER: ${CLASSIFICATION_PROVIDER:-local}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     ports:
       - "8000:8000"
 

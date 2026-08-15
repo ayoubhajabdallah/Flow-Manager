@@ -39,7 +39,7 @@ class RequestStatusUpdate(BaseModel):
 
 
 class RequestRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: int
     title: str
@@ -50,7 +50,23 @@ class RequestRead(BaseModel):
     status: Status
     system: str
     summary: str
-    createdAt: datetime
+    createdAt: datetime = Field(validation_alias="created_at", serialization_alias="createdAt")
+
+
+class RequestHistoryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    id: int
+    requestId: int = Field(validation_alias="request_id", serialization_alias="requestId")
+    eventType: str = Field(validation_alias="event_type", serialization_alias="eventType")
+    fromStatus: Status | None = Field(
+        default=None,
+        validation_alias="from_status",
+        serialization_alias="fromStatus",
+    )
+    toStatus: Status = Field(validation_alias="to_status", serialization_alias="toStatus")
+    message: str | None = None
+    createdAt: datetime = Field(validation_alias="created_at", serialization_alias="createdAt")
 
 
 class CategoryCount(BaseModel):
@@ -65,3 +81,7 @@ class DashboardSummary(BaseModel):
     resolvedThisWeek: int
     averageFirstResponseHours: float
     categories: list[CategoryCount]
+
+
+class HealthResponse(BaseModel):
+    status: str = "ok"
