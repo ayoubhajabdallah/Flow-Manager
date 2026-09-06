@@ -21,6 +21,8 @@ def is_postgres_available() -> bool:
             conn.execute(text("SELECT 1"))
         return True
     except Exception:
+        if os.environ.get("REQUIRE_POSTGRES_TESTS") == "1":
+            raise
         return False
 
 
