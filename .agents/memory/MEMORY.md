@@ -1,1 +1,0 @@
-- [Orval Zod compatibility](orval-zod-compatibility.md) — generated validators and the workspace Zod major must stay aligned or typecheck fails after codegen.

@@ -1,186 +1,175 @@
 # FlowOps
 
-FlowOps is a portfolio-grade operations request triage and workflow application designed to transform unstructured internal support requests into classified, prioritized, and trackable work items.
+[![CI](https://github.com/ayoubhajabdallah/Flow-Manager/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ayoubhajabdallah/Flow-Manager/actions/workflows/ci.yml?query=branch%3Amain)
 
-Employees submit issues in plain language, and FlowOps automatically classifies the category, infers target systems, calculates priority, records an immutable audit history, and presents a real-time operational queue and metric dashboard.
+FlowOps classifies internal support requests, assigns priorities, tracks status changes, and displays aggregated metrics in an operational dashboard.
 
----
+![FlowOps dashboard](screenshots/flowops-dashboard.jpg)
+
+## What this project demonstrates
+
+- FastAPI REST API design with validation and filtering.
+- SQLAlchemy/PostgreSQL persistence and request/status history.
+- Deterministic local classification with an optional LLM classifier and local fallback.
+- A React/TypeScript frontend backed by an Express proxy.
+- Docker packaging and GitHub Actions CI with required PostgreSQL smoke tests.
 
 ## Architecture Overview
 
-```
-                          ┌──────────────────────────┐
-                          │   React + Vite Frontend  │
-                          │   (artifacts/flowops)    │
-                          └─────────────┬────────────┘
-                                        │
-                         HTTP Requests  │ (/api/*)
-                                        ▼
-                          ┌──────────────────────────┐
-                          │    Express Thin Proxy    │
-                          │  (artifacts/api-server)  │
-                          └─────────────┬────────────┘
-                                        │
-                         Forward Proxy  │ (/api/*, /docs, /openapi.json)
-                                        ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           FastAPI Backend Core                              │
-│                          (backend/flowops_api)                              │
-│                                                                             │
-│  ┌──────────────────────┐  ┌──────────────────────┐  ┌───────────────────┐  │
-│  │   Request Workflow   │  │   Event History      │  │  Live Dashboard   │  │
-│  │   & Filtering API    │  │   & Audit Timeline   │  │  Aggregation      │  │
-│  └──────────┬───────────┘  └──────────┬───────────┘  └─────────┬─────────┘  │
-│             │                         │                        │            │
-│             ▼                         ▼                        ▼            │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                     SQLAlchemy 2.0 Persistence Layer                  │  │
-│  └────────────────────────────────────┬──────────────────────────────────┘  │
-└───────────────────────────────────────┼─────────────────────────────────────┘
-                                        │
-                        ┌───────────────┴───────────────┐
-                        │                               │
-                        ▼                               ▼
-             ┌─────────────────────┐         ┌─────────────────────┐
-             │     PostgreSQL      │         │   Outbound Webhook  │
-             │ (flowops_requests & │         │     (n8n / HTTP)    │
-             │ flowops_req_history)│         │ (Non-blocking async)│
-             └─────────────────────┘         └─────────────────────┘
+```text
+           ┌──────────────────────────────┐
+           │    React + Vite frontend     │
+           │     artifacts/flowops        │
+           └──────────────┬───────────────┘
+                          │ HTTP /api/*
+           ┌──────────────▼───────────────┐
+           │     Express thin proxy       │
+           │     artifacts/api-server     │
+           └──────────────┬───────────────┘
+                          │ /api/*, /docs, /openapi.json
+           ┌──────────────▼───────────────┐
+           │       FastAPI backend        │
+           │       backend/flowops_api    │
+           │ Request API & classification │──► In-process background tasks
+           │ Status & event history       │              │
+           │ Dashboard aggregation        │              ▼
+           └──────────────┬───────────────┘      Webhook (n8n / HTTP)
+                          │
+           ┌──────────────▼───────────────┐
+           │      SQLAlchemy 2.0          │
+           └──────────────┬───────────────┘
+                          │
+           ┌──────────────▼───────────────┐
+           │         PostgreSQL           │
+           │   flowops_requests           │
+           │   flowops_request_history    │
+           └──────────────────────────────┘
 ```
 
-### Key Architectural Tenets
+FastAPI is the business-logic source of truth for validation, classification, status/history, and dashboard calculations. Express is a thin HTTP proxy.
 
-1. **FastAPI Single Source of Truth**: All business logic (request creation, validation, triage classification, status lifecycle, history tracking, and dashboard metric calculations) resides exclusively in the FastAPI backend (`backend/flowops_api`).
-2. **Thin Reverse Proxy**: The Express service (`artifacts/api-server`) serves strictly as a transparent HTTP proxy forwarding `/api/*`, `/docs`, and `/openapi.json` to FastAPI, avoiding duplicate data access or business logic.
-3. **Resilient Classification Layer**:
-   - **Local Rule-Based Classifier** (default): Deterministic, zero-dependency keyword classifier.
-   - **LLM Classifier** (optional): OpenAI-compatible external triage provider configured via environment variables.
-   - **Automatic Fallback**: If an external LLM fails, times out, or is unconfigured, the system automatically falls back to local deterministic classification without throwing unhandled exceptions to users.
-4. **Persistent Event History**: Status updates and request creation events are saved to `flowops_request_history`. Metrics like `averageFirstResponseHours` are calculated from real history timestamps.
-5. **Non-Blocking Outbound Webhooks**: When `N8N_WEBHOOK_URL` is set, event notifications are dispatched via background tasks. Webhook connection errors or timeouts never block API responses.
+Persistent events are available through the history API; the frontend status display is derived from current status. Dashboard HTTP queries refresh after request creation and status updates.
 
----
+Optional OpenAI-compatible LLM classification falls back to local rules when unavailable. FastAPI background tasks dispatch `request.created` and `request.status_changed` webhooks; delivery errors are logged.
 
 ## Tech Stack
 
-- **Backend**: Python 3.13+, FastAPI, Pydantic v2, Pydantic-Settings, SQLAlchemy 2.0, Psycopg 3, HTTPX, Uvicorn
-- **Frontend**: React 19, Vite, TypeScript, Tailwind CSS, TanStack React Query, Wouter, Lucide Icons
-- **Database**: PostgreSQL 16+ (with SQLite support for isolated tests)
-- **Containerization**: Docker & Docker Compose (with PostgreSQL healthcheck dependencies)
-- **Testing**: Pytest, FastAPI TestClient, unittest.mock
-
----
+- **Backend:** Python 3.13, FastAPI, Pydantic v2, Pydantic-Settings, SQLAlchemy 2.0, Psycopg 3, HTTPX, Uvicorn.
+- **Frontend/proxy:** React 19, TypeScript, Vite, Tailwind CSS, TanStack React Query, Wouter, Lucide Icons, Express; Node 24 and pnpm 10.33.4 in CI.
+- **Database:** PostgreSQL 16; SQLite for isolated API tests.
+- **Tooling:** Docker, Docker Compose, GitHub Actions, pytest, FastAPI TestClient, unittest.mock.
 
 ## API Contract & Documentation
 
-Interactive OpenAPI / Swagger documentation is available at `/docs`, with raw JSON at `/openapi.json`.
+FastAPI serves Swagger UI at `/docs` and OpenAPI JSON at `/openapi.json`.
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/healthz` | System health check (`{"status": "ok"}`) |
-| `GET` | `/api/requests` | List requests with query filters (`search`, `status`, `category`, `priority`) |
-| `POST` | `/api/requests` | Create, classify, and persist an incoming request |
+| `GET` | `/api/healthz` | Process health (`{"status": "ok"}`); does not check database readiness |
+| `GET` | `/api/requests` | List requests filtered by `search`, `status`, `category`, or `priority` |
+| `POST` | `/api/requests` | Create, classify, and persist a request |
 | `GET` | `/api/requests/{id}` | Retrieve request details |
-| `PATCH` | `/api/requests/{id}/status` | Update request status and record transition event in history |
-| `GET` | `/api/requests/{id}/history` | Retrieve full event history and lifecycle timeline for a request |
-| `GET` | `/api/dashboard/summary` | Real-time aggregated operations dashboard summary |
-
----
+| `PATCH` | `/api/requests/{id}/status` | Update status and record an event when it changes |
+| `GET` | `/api/requests/{id}/history` | Retrieve recorded request events in chronological order |
+| `GET` | `/api/dashboard/summary` | Return current aggregated metrics |
 
 ## Configuration & Environment Variables
 
-Create a `.env` file from `.env.example`:
-
-```bash
-cp .env.example .env
-```
+Copy `.env.example` to `.env`: `cp .env.example .env` (Linux/macOS) or `Copy-Item .env.example .env` (PowerShell). Python reads `.env` from the working directory; export frontend/Express variables in the shell.
 
 | Variable | Description | Default |
 |---|---|---|
-| `DATABASE_URL` | PostgreSQL connection string with psycopg3 driver | `postgresql+psycopg://flowops:flowops@localhost:5432/flowops` |
-| `CLASSIFICATION_PROVIDER` | `local` (deterministic) or `llm` (external provider) | `local` |
-| `LLM_API_KEY` | API key for LLM provider (required if provider is `llm`) | `None` |
-| `LLM_MODEL` | Chat completion model name | `gpt-4o-mini` |
-| `LLM_BASE_URL` | Base URL for OpenAI-compatible endpoint | `https://api.openai.com/v1` |
-| `N8N_WEBHOOK_URL` | Optional outbound webhook endpoint for events | `None` |
-| `FASTAPI_URL` | Upstream target for the Express workspace proxy | `http://127.0.0.1:8000` |
-
----
+| `DATABASE_URL` | SQLAlchemy connection string using Psycopg 3 | `postgresql+psycopg://flowops:flowops@localhost:5432/flowops` |
+| `CLASSIFICATION_PROVIDER` | `local` or `llm` | `local` |
+| `LLM_API_KEY` | API key for optional LLM classification | `None` |
+| `LLM_MODEL` | Model sent to the classification provider | `gpt-4o-mini` |
+| `LLM_BASE_URL` | OpenAI-compatible API base URL | `https://api.openai.com/v1` |
+| `N8N_WEBHOOK_URL` | Optional outbound event destination | `None` |
+| `FASTAPI_URL` | Express upstream URL | `http://127.0.0.1:8000` |
+| `PORT` | Listening port; required by Vite and Express | No default |
+| `BASE_PATH` | Frontend base path; use `/` locally | Required by Vite |
 
 ## Local Setup & Development
 
-### 1. Standalone Python API
+Run commands from the repository root.
 
-1. Create and activate a virtual environment:
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   ```
-2. Install Python dependencies:
-   ```bash
-   pip install -r backend/requirements.txt
-   ```
-3. Run the FastAPI server:
-   ```bash
-   PYTHONPATH=backend uvicorn flowops_api.main:app --reload --port 8000
-   ```
-4. Access Swagger UI at `http://localhost:8000/docs`.
+### Python API
 
-### 2. Frontend Workspace Preview
+Start PostgreSQL (`docker compose up -d postgres`). Create a virtual environment with `python -m venv .venv`; activate it using `source .venv/bin/activate` (Linux/macOS) or `.\.venv\Scripts\Activate.ps1` (PowerShell).
 
-1. Install JavaScript workspace dependencies:
-   ```bash
-   pnpm install
-   ```
-2. Run TypeScript build and typechecks:
-   ```bash
-   pnpm run typecheck
-   ```
-3. Start the frontend development server:
-   ```bash
-   pnpm --filter @workspace/flowops run dev
-   ```
+Then, in either shell:
 
----
-
-## Docker Compose Setup
-
-Run the entire stack (PostgreSQL with healthcheck + FastAPI API):
-
-```bash
-docker compose up --build
+```sh
+python -m pip install -r backend/requirements.txt
+python -m uvicorn flowops_api.main:app --app-dir backend --reload --port 8000
 ```
 
-- **API & Docs**: `http://localhost:8000/docs`
-- **PostgreSQL**: `localhost:5432` (database `flowops`, user `flowops`)
-- Data is preserved across container restarts via the `flowops-postgres` volume.
+Open `http://localhost:8000/docs`. If the request table is empty, the API seeds example requests at startup.
 
----
+### Frontend
 
-## Testing & Verification
-
-The test suite covers classification rules, LLM fallback behavior, health checks, CRUD operations, query filters, status transitions, history tracking, dashboard metrics, input validation, 404 responses, and webhook failure handling.
-
-### Run Automated Tests
-
-```bash
-PYTHONPATH=backend pytest -v backend/tests
-```
-
-### Run Workspace Typechecks
-
-```bash
+```sh
+pnpm install --frozen-lockfile
 pnpm run typecheck
 ```
 
----
+Linux/macOS:
 
-## Verified Capabilities
+```bash
+PORT=5173 BASE_PATH=/ pnpm --filter @workspace/flowops run dev
+```
 
-- [x] Deterministic local classifier with category, priority, system, and summary inference.
-- [x] External LLM provider support with graceful, silent fallback on network/API failure.
-- [x] Full request lifecycle tracking in PostgreSQL (`flowops_requests` + `flowops_request_history`).
-- [x] Real dashboard metrics calculation without hardcoded placeholder figures.
-- [x] Resilient background webhook event dispatching for `request.created` and `request.status_changed`.
-- [x] Thin Express proxy cleanly delegating to FastAPI for workspace previews.
-- [x] Automated test suite with 100% pass rate across unit, API, and PostgreSQL smoke tests.
+Windows PowerShell:
+
+```powershell
+$env:PORT = '5173'
+$env:BASE_PATH = '/'
+pnpm --filter @workspace/flowops run dev
+```
+
+Vite serves the UI at `http://localhost:5173`. API calls use same-origin `/api`; Vite has no API proxy. Full-stack use requires routing `/` to Vite and `/api` to Express → FastAPI.
+
+## Docker Compose Setup
+
+Build and start **FastAPI and PostgreSQL** (frontend and Express are not included):
+
+```sh
+docker compose up --build
+```
+
+- **API & docs:** `http://localhost:8000/docs`.
+- **PostgreSQL:** `localhost:5432`, database/user/password `flowops`.
+- Compose waits for PostgreSQL's health check. Data persists in the `flowops-postgres` volume.
+
+## Testing & Verification
+
+[GitHub Actions](.github/workflows/ci.yml) runs on pushes and pull requests and verifies:
+
+- **27 isolated backend tests:** classification, LLM fallback, API validation/filtering, status/history, dashboard metrics, and webhook handling.
+- **4 required PostgreSQL smoke tests:** health, request persistence, status/history, and dashboard queries. With `REQUIRE_POSTGRES_TESTS=1`, database connection/setup failures fail CI instead of skipping tests.
+- Workspace TypeScript checks, including the frontend and Express, plus frontend production and Express builds.
+- Docker Compose configuration validation and the backend Docker image build.
+
+Run backend tests locally with the Python environment activated:
+
+```bash
+PYTHONPATH=backend python -m pytest -q backend/tests
+```
+
+PowerShell:
+
+```powershell
+$env:PYTHONPATH = 'backend'
+python -m pytest -q backend/tests
+```
+
+Locally, unavailable PostgreSQL may cause skips unless `REQUIRE_POSTGRES_TESTS=1`. Point `TEST_POSTGRES_URL` at a dedicated test database; smoke tests write records.
+
+## Current limitations / design trade-offs
+
+- No authentication or authorization layer.
+- Status values are validated, but transitions between valid statuses are not formally constrained.
+- Event history is persistent; the database does not enforce immutability.
+- Webhooks use in-process background tasks, with no durable queue or delivery retries.
+- Dashboard calculations load request/history rows into Python; larger datasets would benefit from SQL aggregation.
+- Schema setup uses SQLAlchemy `create_all` rather than versioned migrations.
